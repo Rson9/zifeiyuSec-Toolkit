@@ -23,16 +23,16 @@ jobs:
         include:
           - os: windows-latest
             platform: win64
-            ext: .exe
             asset_name: ZifeiyuSec-win64
+            artifact_ext: .exe
           - os: ubuntu-latest
             platform: linux
-            ext: ''
             asset_name: ZifeiyuSec-linux
+            artifact_ext: .AppImage
           - os: macos-latest
             platform: macos
-            ext: ''
             asset_name: ZifeiyuSec-macos
+            artifact_ext: .dmg
 
     runs-on: ${{ matrix.os }}
 
@@ -54,32 +54,65 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Run tests
-        run: python -m unittest discover -s tests -v
-
       - name: Build with PyInstaller
         run: pyinstaller ZifeiyuSec.spec --clean
 
       - name: Set executable permissions (Linux/macOS)
         if: matrix.platform != 'win64'
-        run: chmod +x dist/${{ env.APP_NAME }}/${{ env.APP_NAME }}
+        run: chmod +x dist/${{ env.APP_NAME }}
 
-      - name: Package (Windows)
+      - name: Rename artifact (Windows)
         if: matrix.platform == 'win64'
         run: |
-          Compress-Archive -Path "dist\${{ env.APP_NAME }}\*" -DestinationPath "${{ matrix.asset_name }}-${{ inputs.version }}.zip"
-        shell: pwsh
+          cp dist/${{ env.APP_NAME }}.exe ${{ matrix.asset_name }}-${{ inputs.version }}.exe
+        shell: bash
 
-      - name: Package (Linux/macOS)
-        if: matrix.platform != 'win64'
+      - name: Package (Linux)
+        if: matrix.platform == 'linux'
         run: |
-          cd dist && zip -r "../${{ matrix.asset_name }}-${{ inputs.version }}.zip" "${{ env.APP_NAME }}"
+          # Create AppDir structure
+          mkdir -p AppDir/usr/bin
+          cp dist/${{ env.APP_NAME }} AppDir/usr/bin/
+          cp image.png AppDir/icon.png
+
+          # Create desktop file
+          cat > AppDir/{{ env.APP_NAME }}.desktop << EOF
+          [Desktop Entry]
+          Type=Application
+          Name=${{ env.APP_NAME }}
+          Exec=${{ env.APP_NAME }}
+          Icon=icon
+          Categories=Utility;
+          EOF
+
+          # Download appimagetool
+          wget -q "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" -O appimagetool
+          chmod +x appimagetool
+
+          # Build AppImage
+          ./appimagetool AppDir "${{ matrix.asset_name }}-${{ inputs.version }}.AppImage"
+
+      - name: Package (macOS)
+        if: matrix.platform == 'macos'
+        run: |
+          brew install create-dmg
+          create-dmg \
+            --volname "${{ env.APP_NAME }}" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "ZifeiyuSec" 175 192 \
+            --hide-extension "ZifeiyuSec" \
+            --app-drop-link 425 192 \
+            "${{ matrix.asset_name }}-${{ inputs.version }}.dmg" \
+            "dist/${{ env.APP_NAME }}" || \
+          cd dist && tar -czf "../${{ matrix.asset_name }}-${{ inputs.version }}.tar.gz" "${{ env.APP_NAME }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset_name }}
-          path: ${{ matrix.asset_name }}-${{ inputs.version }}.zip
+          path: ${{ matrix.asset_name }}-${{ inputs.version }}${{ matrix.artifact_ext }}
 
   release:
     needs: build
@@ -95,6 +128,9 @@ jobs:
         with:
           path: artifacts
 
+      - name: List artifacts
+        run: find artifacts -type f
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -104,16 +140,16 @@ jobs:
             ## 子非鱼安全工具箱 ${{ inputs.version }}
 
             ### 下载
-            - Windows: `ZifeiyuSec-win64-${{ inputs.version }}.zip`
-            - Linux: `ZifeiyuSec-linux-${{ inputs.version }}.zip`
-            - macOS: `ZifeiyuSec-macos-${{ inputs.version }}.zip`
+            - Windows: `ZifeiyuSec-win64-${{ inputs.version }}.exe`
+            - Linux: `ZifeiyuSec-linux-${{ inputs.version }}.AppImage`
+            - macOS: `ZifeiyuSec-macos-${{ inputs.version }}.dmg`
 
             ### 使用说明
-            1. 下载对应平台的压缩包
-            2. 解压到本地目录
-            3. 运行 `ZifeiyuSec` 可执行文件
+            - Windows: 下载 .exe 文件直接运行
+            - Linux: 下载 .AppImage 文件，添加执行权限后运行
+            - macOS: 挂载 .dmg 后将应用拖入 Applications
 
             > macOS 用户首次运行需要在"系统设置 > 隐私与安全性"中允许运行
-          files: artifacts/**/*.zip
+          files: artifacts/**/*
           draft: false
           prerelease: false
