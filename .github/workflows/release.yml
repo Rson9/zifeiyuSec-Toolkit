@@ -54,11 +54,27 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      - name: Generate macOS icon
+        if: matrix.platform == 'macos'
+        run: |
+          mkdir -p image.iconset
+          sips -z 16 16 image.png --out image.iconset/icon_16x16.png
+          sips -z 32 32 image.png --out image.iconset/icon_16x16@2x.png
+          sips -z 32 32 image.png --out image.iconset/icon_32x32.png
+          sips -z 64 64 image.png --out image.iconset/icon_32x32@2x.png
+          sips -z 128 128 image.png --out image.iconset/icon_128x128.png
+          sips -z 256 256 image.png --out image.iconset/icon_128x128@2x.png
+          sips -z 256 256 image.png --out image.iconset/icon_256x256.png
+          sips -z 512 512 image.png --out image.iconset/icon_256x256@2x.png
+          sips -z 512 512 image.png --out image.iconset/icon_512x512.png
+          sips -z 1024 1024 image.png --out image.iconset/icon_512x512@2x.png
+          iconutil -c icns image.iconset -o image.icns
+
       - name: Build with PyInstaller
         run: pyinstaller ZifeiyuSec.spec --clean
 
-      - name: Set executable permissions (Linux/macOS)
-        if: matrix.platform != 'win64'
+      - name: Set executable permissions (Linux)
+        if: matrix.platform == 'linux'
         run: chmod +x dist/${{ env.APP_NAME }}
 
       - name: Rename artifact (Windows)
@@ -73,15 +89,23 @@ jobs:
           # Create AppDir structure
           mkdir -p AppDir/usr/bin
           cp dist/${{ env.APP_NAME }} AppDir/usr/bin/
-          cp image.png AppDir/icon.png
+          cp image.png AppDir/${{ env.APP_NAME }}.png
+
+          # Create AppRun launcher
+          cat > AppDir/AppRun << 'EOF'
+          #!/bin/sh
+          HERE="$(dirname "$(readlink -f "$0")")"
+          exec "$HERE/usr/bin/ZifeiyuSec" "$@"
+          EOF
+          chmod +x AppDir/AppRun
 
           # Create desktop file
-          cat > AppDir/{{ env.APP_NAME }}.desktop << EOF
+          cat > AppDir/${{ env.APP_NAME }}.desktop << EOF
           [Desktop Entry]
           Type=Application
           Name=${{ env.APP_NAME }}
           Exec=${{ env.APP_NAME }}
-          Icon=icon
+          Icon=${{ env.APP_NAME }}
           Categories=Utility;
           EOF
 
@@ -101,12 +125,11 @@ jobs:
             --window-pos 200 120 \
             --window-size 600 400 \
             --icon-size 100 \
-            --icon "ZifeiyuSec" 175 192 \
-            --hide-extension "ZifeiyuSec" \
+            --icon "${{ env.APP_NAME }}.app" 175 192 \
+            --hide-extension "${{ env.APP_NAME }}.app" \
             --app-drop-link 425 192 \
             "${{ matrix.asset_name }}-${{ inputs.version }}.dmg" \
-            "dist/${{ env.APP_NAME }}" || \
-          cd dist && tar -czf "../${{ matrix.asset_name }}-${{ inputs.version }}.tar.gz" "${{ env.APP_NAME }}"
+            "dist/${{ env.APP_NAME }}.app"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

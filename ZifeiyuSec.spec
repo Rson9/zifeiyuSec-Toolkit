@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 from pathlib import Path
+import sys
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
@@ -31,8 +32,12 @@ hiddenimports += collect_submodules('core')
 hiddenimports += collect_submodules('ui')
 hiddenimports += ['PyQt5.sip']
 
-icon_path = project_root / 'image.ico'
-if not icon_path.exists():
+if sys.platform == 'darwin':
+    icon_path = project_root / 'image.icns'
+else:
+    icon_path = project_root / 'image.ico'
+
+if not icon_path.exists() and sys.platform != 'darwin':
     fallback_icon = project_root / 'resources' / 'icons' / 'fox.ico'
     icon_path = fallback_icon if fallback_icon.exists() else None
 exe_icon = str(icon_path) if icon_path else None
@@ -77,3 +82,14 @@ exe = EXE(
     entitlements_file=None,
     icon=exe_icon,
 )
+
+if sys.platform == 'darwin':
+    app = BUNDLE(
+        exe,
+        name='ZifeiyuSec.app',
+        icon=exe_icon,
+        bundle_identifier='com.zifeiyusec.toolkit',
+        info_plist={
+            'NSHighResolutionCapable': True,
+        },
+    )
