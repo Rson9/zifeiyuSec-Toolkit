@@ -114,7 +114,7 @@ jobs:
           chmod +x appimagetool
 
           # Build AppImage
-          ./appimagetool AppDir "${{ matrix.asset_name }}-${{ inputs.version }}.AppImage"
+          APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool AppDir "${{ matrix.asset_name }}-${{ inputs.version }}.AppImage"
 
       - name: Package (macOS)
         if: matrix.platform == 'macos'
