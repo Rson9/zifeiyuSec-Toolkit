@@ -1,0 +1,119 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号 (例如: v3.2.4)'
+        required: true
+        type: string
+      create_release:
+        description: '创建 GitHub Release'
+        required: false
+        type: boolean
+        default: true
+
+env:
+  APP_NAME: ZifeiyuSec
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win64
+            ext: .exe
+            asset_name: ZifeiyuSec-win64
+          - os: ubuntu-latest
+            platform: linux
+            ext: ''
+            asset_name: ZifeiyuSec-linux
+          - os: macos-latest
+            platform: macos
+            ext: ''
+            asset_name: ZifeiyuSec-macos
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Write version file
+        run: echo "${{ inputs.version }}" | sed 's/^v//' > VERSION
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Run tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Build with PyInstaller
+        run: pyinstaller ZifeiyuSec.spec --clean
+
+      - name: Set executable permissions (Linux/macOS)
+        if: matrix.platform != 'win64'
+        run: chmod +x dist/${{ env.APP_NAME }}/${{ env.APP_NAME }}
+
+      - name: Package (Windows)
+        if: matrix.platform == 'win64'
+        run: |
+          Compress-Archive -Path "dist\${{ env.APP_NAME }}\*" -DestinationPath "${{ matrix.asset_name }}-${{ inputs.version }}.zip"
+        shell: pwsh
+
+      - name: Package (Linux/macOS)
+        if: matrix.platform != 'win64'
+        run: |
+          cd dist && zip -r "../${{ matrix.asset_name }}-${{ inputs.version }}.zip" "${{ env.APP_NAME }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: ${{ matrix.asset_name }}-${{ inputs.version }}.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: inputs.create_release == true
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version }}
+          name: ${{ inputs.version }}
+          body: |
+            ## 子非鱼安全工具箱 ${{ inputs.version }}
+
+            ### 下载
+            - Windows: `ZifeiyuSec-win64-${{ inputs.version }}.zip`
+            - Linux: `ZifeiyuSec-linux-${{ inputs.version }}.zip`
+            - macOS: `ZifeiyuSec-macos-${{ inputs.version }}.zip`
+
+            ### 使用说明
+            1. 下载对应平台的压缩包
+            2. 解压到本地目录
+            3. 运行 `ZifeiyuSec` 可执行文件
+
+            > macOS 用户首次运行需要在"系统设置 > 隐私与安全性"中允许运行
+          files: artifacts/**/*.zip
+          draft: false
+          prerelease: false

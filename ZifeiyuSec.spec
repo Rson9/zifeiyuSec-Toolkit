@@ -19,7 +19,7 @@ datas += tree_datas('data')
 datas += tree_datas('docs')
 datas += tree_datas('images')
 datas += tree_datas('resources')
-for extra_file in ('settings.example.ini', 'run_tool.vbs', 'README.md', 'LICENSE', 'image.ico', 'image.png', 'favicon.ico'):
+for extra_file in ('settings.example.ini', 'run_tool.vbs', 'README.md', 'LICENSE', 'image.ico', 'image.png', 'favicon.ico', 'VERSION'):
     candidate = project_root / extra_file
     if candidate.exists():
         datas.append((str(candidate), '.'))
